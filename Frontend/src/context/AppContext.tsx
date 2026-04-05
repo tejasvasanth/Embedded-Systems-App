@@ -2,6 +2,14 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/src/services/supabase';
 
+export interface DriverNotification {
+  bookingId: string;
+  rideFrom: string;
+  rideTo: string;
+  seats: number;
+  txHash: string | null;
+}
+
 export interface Profile {
   id: string;
   wallet_address: string | null;
@@ -40,6 +48,8 @@ export interface Booking {
   ride?: Ride;
 }
 
+const ADMIN_EMAIL = 'tejaswizard007@gmail.com';
+
 interface AppContextType {
   session: Session | null;
   user: User | null;
@@ -48,6 +58,9 @@ interface AppContextType {
   rides: Ride[];
   bookings: Booking[];
   loading: boolean;
+  isAdmin: boolean;
+  driverNotification: DriverNotification | null;
+  clearDriverNotification: () => void;
   setWalletAddress: (address: string | null) => void;
   setProfile: (profile: Profile | null) => void;
   fetchRides: () => Promise<void>;
@@ -65,13 +78,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [rides, setRides] = useState<Ride[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [driverNotification, setDriverNotification] = useState<DriverNotification | null>(null);
 
   useEffect(() => {
+    let cleanupListener: (() => void) | null = null;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
         loadProfile(session.user.id);
+        cleanupListener = setupDriverListener(session.user.id);
       }
       setLoading(false);
     });
@@ -83,14 +100,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
         loadProfile(session.user.id);
+        cleanupListener?.();
+        cleanupListener = setupDriverListener(session.user.id);
       } else {
         setProfile(null);
         setRides([]);
         setBookings([]);
+        cleanupListener?.();
+        cleanupListener = null;
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      cleanupListener?.();
+    };
   }, []);
 
   const loadProfile = async (userId: string) => {
@@ -107,20 +131,64 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setProfile(data);
         setWalletAddress(data.wallet_address);
       } else {
-        const fallbackProfile = {
+        // New user — insert a row so bookings FK constraint is satisfied
+        const { data: authData } = await supabase.auth.getUser();
+        const authUser = authData?.user;
+        const newRow = {
           id: userId,
-          wallet_address: null,
-          name: user?.user_metadata?.name ?? null,
-          email: user?.email ?? null,
+          wallet_address: null as string | null,
+          name: authUser?.user_metadata?.name ?? authUser?.email?.split('@')[0] ?? null,
+          email: authUser?.email ?? null,
           rating: 0,
           total_rides: 0,
-          created_at: new Date().toISOString(),
         };
-        setProfile(fallbackProfile);
+        const { data: created, error: insertError } = await supabase
+          .from('users')
+          .upsert([newRow], { onConflict: 'id' })
+          .select()
+          .single();
+
+        if (!insertError && created) {
+          setProfile(created);
+        } else {
+          // Graceful fallback — profile is local-only but at least the UI works
+          setProfile({ ...newRow, created_at: new Date().toISOString() });
+        }
       }
     } catch (error) {
       console.error('Error loading profile:', error);
     }
+  };
+
+  // Subscribe to new bookings on rides this user drives
+  const setupDriverListener = (userId: string) => {
+    const channel = supabase
+      .channel(`driver-bookings-${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'bookings' },
+        async (payload) => {
+          const { data: ride } = await supabase
+            .from('rides')
+            .select('driver_id, source, destination')
+            .eq('id', payload.new.ride_id)
+            .eq('driver_id', userId)
+            .maybeSingle();
+
+          if (ride) {
+            setDriverNotification({
+              bookingId: payload.new.id,
+              rideFrom: ride.source,
+              rideTo: ride.destination,
+              seats: payload.new.seats_booked,
+              txHash: payload.new.tx_hash ?? null,
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   };
 
   const fetchRides = async () => {
@@ -239,6 +307,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         rides,
         bookings,
         loading,
+        isAdmin: user?.email === ADMIN_EMAIL,
+        driverNotification,
+        clearDriverNotification: () => setDriverNotification(null),
         setWalletAddress,
         setProfile,
         fetchRides,

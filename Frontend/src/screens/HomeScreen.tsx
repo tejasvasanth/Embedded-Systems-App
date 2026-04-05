@@ -6,17 +6,22 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  Modal,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  Car, List, PlusCircle, User, Zap, TrendingUp, Clock,
+  Car, List, PlusCircle, User, Zap, TrendingUp, Clock, Shield, X,
 } from 'lucide-react-native';
 import { colors, typography, spacing } from '@/src/theme';
 import { useApp } from '@/src/context/AppContext';
 import { useRouter } from 'expo-router';
 
 export const HomeScreen = () => {
-  const { profile, rides, bookings, fetchRides, fetchBookings, walletAddress } = useApp();
+  const {
+    profile, rides, bookings, fetchRides, fetchBookings, walletAddress,
+    driverNotification, clearDriverNotification,
+  } = useApp();
   const router = useRouter();
 
   useEffect(() => {
@@ -179,6 +184,72 @@ export const HomeScreen = () => {
 
         <View style={{ height: 24 }} />
       </ScrollView>
+
+      {/* Driver contract event notification */}
+      <Modal
+        visible={!!driverNotification}
+        transparent
+        animationType="fade"
+        onRequestClose={clearDriverNotification}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <LinearGradient
+              colors={['rgba(0,212,255,0.12)', 'rgba(99,102,241,0.08)']}
+              style={styles.modalHeader}
+            >
+              <View style={styles.modalHeaderLeft}>
+                <View style={styles.modalIconWrap}>
+                  <Shield size={20} color={colors.chain} />
+                </View>
+                <View>
+                  <Text style={styles.modalTitle}>New Booking — Contract Event</Text>
+                  <Text style={styles.modalSub}>RideSharing.sol · BookingCreated</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={clearDriverNotification} style={styles.modalClose}>
+                <X size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            </LinearGradient>
+
+            {driverNotification && (
+              <View style={styles.modalBody}>
+                <Text style={styles.modalRoute}>
+                  {driverNotification.rideFrom} → {driverNotification.rideTo}
+                </Text>
+                <View style={styles.modalRow}>
+                  <Text style={styles.modalLabel}>Seats booked</Text>
+                  <Text style={styles.modalValue}>{driverNotification.seats}</Text>
+                </View>
+                <View style={styles.modalRow}>
+                  <Text style={styles.modalLabel}>Passenger funds</Text>
+                  <Text style={[styles.modalValue, { color: colors.success }]}>Held in escrow</Text>
+                </View>
+                {driverNotification.txHash && (
+                  <View style={styles.txBox}>
+                    <Zap size={12} color={colors.chain} />
+                    <Text style={styles.txHash} selectable numberOfLines={2}>
+                      {driverNotification.txHash}
+                    </Text>
+                  </View>
+                )}
+                <Text style={styles.modalNote}>
+                  Funds are locked in the smart contract and will be released to you upon ride completion.
+                </Text>
+                <TouchableOpacity
+                  style={styles.modalBtn}
+                  onPress={() => { clearDriverNotification(); fetchBookings(); }}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient colors={colors.gradientChain} style={styles.modalBtnGrad}>
+                    <Text style={styles.modalBtnText}>Got it</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -422,5 +493,118 @@ const styles = StyleSheet.create({
   emptyText: {
     ...typography.body,
     color: colors.textMuted,
+  },
+
+  // Driver notification modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.borderChain,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  modalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  modalIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.chainDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.borderChain,
+  },
+  modalTitle: {
+    ...typography.caption,
+    color: colors.chain,
+    fontWeight: '700',
+  },
+  modalSub: {
+    ...typography.small,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  modalClose: {
+    padding: 4,
+  },
+  modalBody: {
+    padding: 16,
+    gap: 10,
+  },
+  modalRoute: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  modalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  modalValue: {
+    ...typography.caption,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  txBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    backgroundColor: colors.chainDim,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.borderChain,
+    marginTop: 4,
+  },
+  txHash: {
+    ...typography.small,
+    color: colors.chain,
+    fontFamily: 'monospace',
+    flex: 1,
+  },
+  modalNote: {
+    ...typography.small,
+    color: colors.textMuted,
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  modalBtn: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 6,
+  },
+  modalBtnGrad: {
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  modalBtnText: {
+    ...typography.body,
+    color: colors.textInverse,
+    fontWeight: '700',
   },
 });

@@ -7,13 +7,16 @@ import {
   KeyboardAvoidingView,
   Alert,
   Platform,
+  TouchableOpacity,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MapPin, Clock, DollarSign, Users, Zap, Shield } from 'lucide-react-native';
+import { MapPin, Clock, DollarSign, Users, Zap, Shield, Map } from 'lucide-react-native';
 import { colors, typography, spacing } from '@/src/theme';
 import { Header } from '@/src/components/Header';
 import { InputField } from '@/src/components/InputField';
 import { PrimaryButton } from '@/src/components/PrimaryButton';
+import { MapPickerModal } from '@/src/components/MapPickerModal';
+import { CurrentLocationButton } from '@/src/components/CurrentLocationButton';
 import { useApp } from '@/src/context/AppContext';
 import { apiService } from '@/src/services/api';
 import { web3Service } from '@/src/services/web3';
@@ -25,6 +28,10 @@ export const CreateRideScreen = () => {
   const { user, refreshData } = useApp();
   const navigation = useNavigation();
   const [loading, setLoading] = useState(false);
+
+  // Map picker state
+  const [mapTarget, setMapTarget] = useState<'from' | 'to' | null>(null);
+
   const [formData, setFormData] = useState<Record<FormKey, string>>({
     from_location:  '',
     to_location:    '',
@@ -131,18 +138,62 @@ export const CreateRideScreen = () => {
             <MapPin size={16} color={colors.primary} />
             <Text style={styles.sectionTitle}>Route</Text>
           </View>
+
+          {/* Pickup */}
           <InputField
             label="Pickup Location"
             value={formData.from_location}
             onChangeText={set('from_location')}
-            placeholder="e.g. Mumbai Central"
+            placeholder="Type or pick on map…"
+            rightIcon={
+              <TouchableOpacity
+                onPress={() => setMapTarget('from')}
+                style={styles.mapBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Map size={16} color={colors.primary} />
+              </TouchableOpacity>
+            }
           />
+          <CurrentLocationButton
+            label="Use my current location (pickup)"
+            onLocation={label => setFormData(prev => ({ ...prev, from_location: label }))}
+          />
+          {formData.from_location !== '' && (
+            <View style={styles.pickedPill}>
+              <MapPin size={11} color={colors.primary} />
+              <Text style={styles.pickedText} numberOfLines={1}>{formData.from_location}</Text>
+            </View>
+          )}
+
+          {/* Destination */}
           <InputField
             label="Destination"
             value={formData.to_location}
             onChangeText={set('to_location')}
-            placeholder="e.g. Pune Station"
+            placeholder="Type or pick on map…"
+            rightIcon={
+              <TouchableOpacity
+                onPress={() => setMapTarget('to')}
+                style={styles.mapBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Map size={16} color={colors.success} />
+              </TouchableOpacity>
+            }
           />
+          <CurrentLocationButton
+            label="Use my current location (destination)"
+            onLocation={label => setFormData(prev => ({ ...prev, to_location: label }))}
+          />
+          {formData.to_location !== '' && (
+            <View style={[styles.pickedPill, { borderColor: colors.success + '30' }]}>
+              <MapPin size={11} color={colors.success} />
+              <Text style={[styles.pickedText, { color: colors.success }]} numberOfLines={1}>
+                {formData.to_location}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Ride details */}
@@ -204,6 +255,20 @@ export const CreateRideScreen = () => {
           style={styles.createBtn}
         />
       </ScrollView>
+
+      {/* Map picker modals */}
+      <MapPickerModal
+        visible={mapTarget === 'from'}
+        title="Pick Pickup Location"
+        onSelect={loc => setFormData(prev => ({ ...prev, from_location: loc.label }))}
+        onClose={() => setMapTarget(null)}
+      />
+      <MapPickerModal
+        visible={mapTarget === 'to'}
+        title="Pick Destination"
+        onSelect={loc => setFormData(prev => ({ ...prev, to_location: loc.label }))}
+        onClose={() => setMapTarget(null)}
+      />
     </KeyboardAvoidingView>
   );
 };
@@ -251,6 +316,33 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text,
     fontWeight: '700',
+  },
+  mapBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: colors.primary + '18',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.primary + '0F',
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: -8,
+    marginBottom: spacing.md,
+  },
+  pickedText: {
+    ...typography.small,
+    color: colors.primary,
+    flex: 1,
+    fontWeight: '500',
   },
   twoCol: {
     flexDirection: 'row',

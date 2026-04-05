@@ -6,10 +6,13 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Modal,
+  TouchableOpacity,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { RouteMapView } from '@/src/components/RouteMapView';
 import {
-  MapPin, Calendar, Users, Car, User, Star, Zap, Shield,
+  MapPin, Calendar, Users, Car, User, Star, Zap, Shield, X, CheckCircle,
 } from 'lucide-react-native';
 import { colors, typography, spacing } from '@/src/theme';
 import { Header } from '@/src/components/Header';
@@ -29,6 +32,9 @@ export const RideDetailsScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [booking, setBooking] = useState(false);
   const [seatsToBook, setSeatsToBook] = useState('1');
+  const [contractModal, setContractModal] = useState<{
+    txHash: string; bookingId: string; totalPrice: number; seats: number;
+  } | null>(null);
 
   const canBook =
     !!ride &&
@@ -74,7 +80,13 @@ export const RideDetailsScreen: React.FC = () => {
       });
       await refreshData();
       if (created?.id) {
-        router.push({ pathname: '/e-receipt', params: { bookingId: created.id } });
+        // Show contract event modal before navigating to receipt
+        setContractModal({
+          txHash: blockchainTx || '',
+          bookingId: created.id,
+          totalPrice,
+          seats,
+        });
       } else {
         Alert.alert('Success', 'Ride booked!');
         router.back();
@@ -117,6 +129,91 @@ export const RideDetailsScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <Header title="Ride Details" showBack />
+
+      {/* Passenger contract event modal */}
+      <Modal
+        visible={!!contractModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setContractModal(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            {/* Success header */}
+            <LinearGradient
+              colors={['rgba(16,185,129,0.15)', 'rgba(99,102,241,0.08)']}
+              style={styles.modalHeader}
+            >
+              <View style={styles.modalSuccessIcon}>
+                <CheckCircle size={32} color={colors.success} />
+              </View>
+              <Text style={styles.modalTitle}>Booking Confirmed</Text>
+              <Text style={styles.modalSub}>Smart contract event emitted</Text>
+            </LinearGradient>
+
+            {contractModal && (
+              <View style={styles.modalBody}>
+                {/* Contract details */}
+                <View style={styles.contractBox}>
+                  <View style={styles.contractRow}>
+                    <Text style={styles.contractLabel}>Event</Text>
+                    <Text style={[styles.contractValue, { color: colors.chain }]}>BookingCreated</Text>
+                  </View>
+                  <View style={styles.contractRow}>
+                    <Text style={styles.contractLabel}>Contract</Text>
+                    <Text style={styles.contractValue}>RideSharing.sol</Text>
+                  </View>
+                  <View style={styles.contractRow}>
+                    <Text style={styles.contractLabel}>Seats</Text>
+                    <Text style={styles.contractValue}>{contractModal.seats}</Text>
+                  </View>
+                  <View style={styles.contractRow}>
+                    <Text style={styles.contractLabel}>Escrow amount</Text>
+                    <Text style={[styles.contractValue, { color: colors.success }]}>
+                      ${contractModal.totalPrice.toFixed(2)} locked
+                    </Text>
+                  </View>
+                </View>
+
+                {contractModal.txHash ? (
+                  <View style={styles.txBox}>
+                    <Zap size={12} color={colors.chain} />
+                    <Text style={styles.txText} selectable numberOfLines={3}>
+                      {contractModal.txHash}
+                    </Text>
+                  </View>
+                ) : null}
+
+                <Text style={styles.modalNote}>
+                  Your payment is held in escrow. Funds are released to the driver after ride completion. You will receive a refund if cancelled.
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.receiptBtn}
+                  onPress={() => {
+                    const id = contractModal.bookingId;
+                    setContractModal(null);
+                    router.push({ pathname: '/e-receipt', params: { bookingId: id } });
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient colors={colors.gradientPrimary} style={styles.receiptBtnGrad}>
+                    <Text style={styles.receiptBtnText}>View E-Receipt</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => { setContractModal(null); router.back(); }}
+                  style={styles.dismissBtn}
+                >
+                  <Text style={styles.dismissText}>Back to rides</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       <ScrollView showsVerticalScrollIndicator={false}>
 
         {/* Hero price card */}
@@ -147,6 +244,16 @@ export const RideDetailsScreen: React.FC = () => {
             </View>
           </View>
         </LinearGradient>
+
+        {/* Route Map */}
+        <View style={styles.mapSection}>
+          <Text style={styles.mapSectionTitle}>Route Map</Text>
+          <RouteMapView
+            from={ride.from_location}
+            to={ride.to_location}
+            height={230}
+          />
+        </View>
 
         <View style={styles.body}>
           {/* Details */}
@@ -351,6 +458,17 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.6)',
     fontSize: 16,
   },
+  mapSection: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: 4,
+  },
+  mapSectionTitle: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
   body: {
     padding: spacing.lg,
   },
@@ -485,5 +603,115 @@ const styles = StyleSheet.create({
     color: colors.warning,
     marginBottom: spacing.sm,
     textAlign: 'center',
+  },
+
+  // Contract event modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.82)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    alignItems: 'center',
+    paddingVertical: 28,
+    paddingHorizontal: spacing.lg,
+    gap: 8,
+  },
+  modalSuccessIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: colors.successDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.3,
+  },
+  modalSub: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  modalBody: {
+    padding: spacing.lg,
+    gap: 12,
+  },
+  contractBox: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 10,
+  },
+  contractRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  contractLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  contractValue: {
+    ...typography.caption,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  txBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    backgroundColor: colors.chainDim,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.borderChain,
+  },
+  txText: {
+    ...typography.small,
+    color: colors.chain,
+    fontFamily: 'monospace',
+    flex: 1,
+  },
+  modalNote: {
+    ...typography.small,
+    color: colors.textMuted,
+    lineHeight: 18,
+  },
+  receiptBtn: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  receiptBtnGrad: {
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  receiptBtnText: {
+    ...typography.body,
+    color: colors.white,
+    fontWeight: '700',
+  },
+  dismissBtn: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  dismissText: {
+    ...typography.caption,
+    color: colors.textMuted,
   },
 });
