@@ -1,0 +1,17 @@
+.venv/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+.env
+.env.*
+
+Frontend/node_modules/
+Frontend/dist/
+Frontend/.expo/
+Frontend/.bolt/
+Frontend/*.tsbuildinfo
+
+Backend/.venv/
+Backend/.env
+Backend/.env.*
